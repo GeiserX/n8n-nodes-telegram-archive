@@ -45,9 +45,9 @@ export class TelegramArchiveTrigger implements INodeType {
 		const chatId = this.getNodeParameter('chatId', '') as string;
 
 		const webhookData = this.getWorkflowStaticData('node');
-		const previousCount = (webhookData.lastMessageCount as number) ?? 0;
 
-		// Fetch global stats to get current total message count
+		// Fetch global stats — the API returns "messages" (not "totalMessages")
+		// and "per_chat_message_counts" with per-chat breakdowns
 		const statsResponse = await this.helpers.httpRequest({
 			method: 'GET',
 			url: `${baseUrl}/api/stats`,
@@ -58,18 +58,26 @@ export class TelegramArchiveTrigger implements INodeType {
 			json: true,
 		});
 
-		const currentCount = (statsResponse as IDataObject).totalMessages as number;
+		const stats = statsResponse as IDataObject;
 
-		if (currentCount <= previousCount) {
-			webhookData.lastMessageCount = currentCount;
-			return null;
-		}
-
-		webhookData.lastMessageCount = currentCount;
-
-		// If a specific chat is selected, fetch latest messages from that chat
 		if (chatId) {
-			const newCount = currentCount - previousCount;
+			// Per-chat mode: track this specific chat's message count independently
+			const stateKey = `chatCount_${chatId}`;
+			const previousChatCount = (webhookData[stateKey] as number) ?? 0;
+
+			// Extract per-chat count from the stats response
+			const perChat = (stats.per_chat_message_counts as IDataObject) ?? {};
+			const currentChatCount = (perChat[chatId] as number) ?? 0;
+
+			if (currentChatCount <= previousChatCount) {
+				webhookData[stateKey] = currentChatCount;
+				return null;
+			}
+
+			const newCount = currentChatCount - previousChatCount;
+			webhookData[stateKey] = currentChatCount;
+
+			// Fetch the latest messages from this specific chat
 			const messagesResponse = await this.helpers.httpRequest({
 				method: 'GET',
 				url: `${baseUrl}/api/chats/${chatId}/messages`,
@@ -91,7 +99,17 @@ export class TelegramArchiveTrigger implements INodeType {
 			return [messages.map((msg) => ({ json: msg as IDataObject }))];
 		}
 
-		// No specific chat: return the stats delta as a single item
+		// Global mode: track total message count across all chats
+		const previousCount = (webhookData.lastMessageCount as number) ?? 0;
+		const currentCount = (stats.messages as number) ?? 0;
+
+		if (currentCount <= previousCount) {
+			webhookData.lastMessageCount = currentCount;
+			return null;
+		}
+
+		webhookData.lastMessageCount = currentCount;
+
 		return [
 			[
 				{
@@ -99,7 +117,7 @@ export class TelegramArchiveTrigger implements INodeType {
 						previousCount,
 						currentCount,
 						newMessages: currentCount - previousCount,
-						...(statsResponse as IDataObject),
+						...stats,
 					},
 				},
 			],

@@ -41,7 +41,7 @@ export class TelegramArchiveApi implements ICredentialType {
 	test: ICredentialTestRequest = {
 		request: {
 			baseURL: '={{$credentials.url}}',
-			url: '/api/health',
+			url: '/api/stats',
 			method: 'GET',
 		},
 	};
