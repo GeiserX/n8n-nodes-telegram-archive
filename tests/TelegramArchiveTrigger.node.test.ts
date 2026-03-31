@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { TelegramArchiveTrigger } from '../nodes/TelegramArchive/TelegramArchiveTrigger.node';
 
+const AUTH_DISABLED = { auth_required: false };
+
 function createMockContext(
 	params: Record<string, any>,
 	staticData: Record<string, any>,
@@ -42,7 +44,7 @@ describe('TelegramArchiveTrigger Node', () => {
 		const ctx = createMockContext(
 			{ chatId: '' },
 			staticData,
-			[{ messages: 100, chats: 5 }],
+			[AUTH_DISABLED, { messages: 100, chats: 5 }],
 		);
 
 		const result = await trigger.poll.call(ctx as any);
@@ -56,7 +58,7 @@ describe('TelegramArchiveTrigger Node', () => {
 		const ctx = createMockContext(
 			{ chatId: '' },
 			staticData,
-			[{ messages: 15, chats: 3 }],
+			[AUTH_DISABLED, { messages: 15, chats: 3 }],
 		);
 
 		const result = await trigger.poll.call(ctx as any);
@@ -71,7 +73,7 @@ describe('TelegramArchiveTrigger Node', () => {
 		const ctx = createMockContext(
 			{ chatId: '' },
 			staticData,
-			[{ messages: 100, chats: 5 }],
+			[AUTH_DISABLED, { messages: 100, chats: 5 }],
 		);
 
 		const result = await trigger.poll.call(ctx as any);
@@ -85,6 +87,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			{ chatId: '456' },
 			staticData,
 			[
+				AUTH_DISABLED,
 				{
 					messages: 200,
 					per_chat_message_counts: { '456': 30 },
@@ -104,6 +107,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			{ chatId: '123' },
 			staticData,
 			[
+				AUTH_DISABLED,
 				{
 					messages: 200,
 					per_chat_message_counts: { '123': 55 },
@@ -130,6 +134,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			{ chatId: '789' },
 			staticData,
 			[
+				AUTH_DISABLED,
 				{
 					messages: 200,
 					per_chat_message_counts: { '789': 42 },

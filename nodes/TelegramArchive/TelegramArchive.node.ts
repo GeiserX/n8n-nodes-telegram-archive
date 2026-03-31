@@ -12,6 +12,14 @@ async function getSessionCookie(
 	username: string,
 	password: string,
 ): Promise<string> {
+	// Check whether the instance actually requires authentication
+	const authCheck = (await helpers.httpRequest({
+		method: 'GET',
+		url: `${baseUrl}/api/auth/check`,
+		json: true,
+	})) as IDataObject;
+
+	if (!authCheck.auth_required) return '';
 	if (!username || !password) return '';
 
 	const response = (await helpers.httpRequest({

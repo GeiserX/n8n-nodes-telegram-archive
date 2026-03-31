@@ -1,5 +1,4 @@
 import type {
-	ICredentialTestRequest,
 	ICredentialType,
 	INodeProperties,
 } from 'n8n-workflow';
@@ -36,12 +35,4 @@ export class TelegramArchiveApi implements ICredentialType {
 				'Login password (leave empty if authentication is disabled on the instance)',
 		},
 	];
-
-	test: ICredentialTestRequest = {
-		request: {
-			baseURL: '={{$credentials.url}}',
-			url: '/api/auth/check',
-			method: 'GET',
-		},
-	};
 }

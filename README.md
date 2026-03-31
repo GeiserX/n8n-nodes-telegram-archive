@@ -13,7 +13,10 @@ Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes
 Configure the **Telegram Archive API** credential with:
 
 - **URL** — Base URL of your Telegram-Archive instance (default: `http://localhost:8000`)
-- **Auth Token** — Authentication token for the API
+- **Username** — Login username (leave empty if authentication is disabled)
+- **Password** — Login password (leave empty if authentication is disabled)
+
+The node uses Telegram-Archive's session cookie authentication (`POST /api/login`). If the instance has authentication disabled (no `VIEWER_USERNAME`/`VIEWER_PASSWORD` env vars), leave the credential fields empty.
 
 ## Nodes
 
@@ -41,4 +44,4 @@ Polling trigger that detects new messages by comparing total message counts via 
 
 ## License
 
-[GPL-3.0](LICENSE)
+[MIT](LICENSE)
