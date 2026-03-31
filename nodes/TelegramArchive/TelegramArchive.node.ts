@@ -1,4 +1,33 @@
-import type { INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+	IDataObject,
+} from 'n8n-workflow';
+
+async function getSessionCookie(
+	helpers: IExecuteFunctions['helpers'],
+	baseUrl: string,
+	username: string,
+	password: string,
+): Promise<string> {
+	if (!username || !password) return '';
+
+	const response = (await helpers.httpRequest({
+		method: 'POST',
+		url: `${baseUrl}/api/login`,
+		body: { username, password },
+		json: true,
+		returnFullResponse: true,
+	})) as { headers: Record<string, string | string[]> };
+
+	const setCookie = response.headers['set-cookie'];
+	const raw = Array.isArray(setCookie) ? setCookie.join('; ') : (setCookie ?? '');
+	const match = raw.match(/viewer_auth=([^;]+)/);
+	if (!match) throw new Error('Login failed — no session cookie received');
+	return `viewer_auth=${match[1]}`;
+}
 
 export class TelegramArchive implements INodeType {
 	description: INodeTypeDescription = {
@@ -8,10 +37,9 @@ export class TelegramArchive implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-		description: 'Query archived Telegram chats, messages, and statistics via Telegram-Archive',
-		defaults: {
-			name: 'Telegram Archive',
-		},
+		description:
+			'Query archived Telegram chats, messages, and statistics via Telegram-Archive',
+		defaults: { name: 'Telegram Archive' },
 		inputs: ['main'],
 		outputs: ['main'],
 		credentials: [
@@ -20,13 +48,6 @@ export class TelegramArchive implements INodeType {
 				required: true,
 			},
 		],
-		requestDefaults: {
-			baseURL: '={{$credentials.url}}',
-			headers: {
-				Accept: 'application/json',
-				'Content-Type': 'application/json',
-			},
-		},
 		properties: [
 			// ── Resource ──
 			{
@@ -57,48 +78,24 @@ export class TelegramArchive implements INodeType {
 						value: 'export',
 						description: 'Export a chat',
 						action: 'Export a chat',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '=/api/chats/{{$parameter["chatId"]}}/export',
-							},
-						},
 					},
 					{
 						name: 'Get Stats',
 						value: 'getStats',
 						description: 'Get statistics for a chat',
 						action: 'Get stats for a chat',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '=/api/chats/{{$parameter["chatId"]}}/stats',
-							},
-						},
 					},
 					{
 						name: 'Get Topics',
 						value: 'getTopics',
 						description: 'Get topics for a chat',
 						action: 'Get topics for a chat',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '=/api/chats/{{$parameter["chatId"]}}/topics',
-							},
-						},
 					},
 					{
 						name: 'List',
 						value: 'list',
 						description: 'List all chats',
 						action: 'List all chats',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '/api/chats',
-							},
-						},
 					},
 				],
 				default: 'list',
@@ -117,36 +114,18 @@ export class TelegramArchive implements INodeType {
 						value: 'getByDate',
 						description: 'Get messages by date',
 						action: 'Get messages by date',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '=/api/chats/{{$parameter["chatId"]}}/messages/by-date',
-							},
-						},
 					},
 					{
 						name: 'Get Pinned',
 						value: 'getPinned',
 						description: 'Get pinned messages',
 						action: 'Get pinned messages',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '=/api/chats/{{$parameter["chatId"]}}/pinned',
-							},
-						},
 					},
 					{
 						name: 'List',
 						value: 'list',
 						description: 'List messages in a chat',
 						action: 'List messages in a chat',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '=/api/chats/{{$parameter["chatId"]}}/messages',
-							},
-						},
 					},
 				],
 				default: 'list',
@@ -165,24 +144,12 @@ export class TelegramArchive implements INodeType {
 						value: 'getGlobal',
 						description: 'Get global statistics',
 						action: 'Get global statistics',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '/api/stats',
-							},
-						},
 					},
 					{
 						name: 'Refresh',
 						value: 'refresh',
 						description: 'Refresh statistics',
 						action: 'Refresh statistics',
-						routing: {
-							request: {
-								method: 'POST',
-								url: '/api/stats/refresh',
-							},
-						},
 					},
 				],
 				default: 'getGlobal',
@@ -201,12 +168,6 @@ export class TelegramArchive implements INodeType {
 						value: 'list',
 						description: 'List all folders',
 						action: 'List all folders',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '/api/folders',
-							},
-						},
 					},
 				],
 				default: 'list',
@@ -225,12 +186,6 @@ export class TelegramArchive implements INodeType {
 						value: 'getCount',
 						description: 'Get archived message count',
 						action: 'Get archived message count',
-						routing: {
-							request: {
-								method: 'GET',
-								url: '/api/archived/count',
-							},
-						},
 					},
 				],
 				default: 'getCount',
@@ -276,11 +231,6 @@ export class TelegramArchive implements INodeType {
 				displayOptions: {
 					show: { resource: ['message'], operation: ['list'] },
 				},
-				routing: {
-					request: {
-						qs: { limit: '={{$value}}' },
-					},
-				},
 			},
 			{
 				displayName: 'Offset',
@@ -291,11 +241,6 @@ export class TelegramArchive implements INodeType {
 				displayOptions: {
 					show: { resource: ['message'], operation: ['list'] },
 				},
-				routing: {
-					request: {
-						qs: { offset: '={{$value}}' },
-					},
-				},
 			},
 			{
 				displayName: 'Search Query',
@@ -305,13 +250,6 @@ export class TelegramArchive implements INodeType {
 				description: 'Optional search query to filter messages',
 				displayOptions: {
 					show: { resource: ['message'], operation: ['list'] },
-				},
-				routing: {
-					send: {
-						type: 'query',
-						property: 'search',
-						value: '={{$value}}',
-					},
 				},
 			},
 
@@ -327,12 +265,86 @@ export class TelegramArchive implements INodeType {
 				displayOptions: {
 					show: { resource: ['message'], operation: ['getByDate'] },
 				},
-				routing: {
-					request: {
-						qs: { date: '={{$value}}' },
-					},
-				},
 			},
 		],
 	};
+
+	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+		const credentials = await this.getCredentials('telegramArchiveApi');
+		const baseUrl = credentials.url as string;
+		const cookie = await getSessionCookie(
+			this.helpers,
+			baseUrl,
+			credentials.username as string,
+			credentials.password as string,
+		);
+
+		const items = this.getInputData();
+		const returnData: INodeExecutionData[] = [];
+
+		for (let i = 0; i < items.length; i++) {
+			const resource = this.getNodeParameter('resource', i) as string;
+			const operation = this.getNodeParameter('operation', i) as string;
+
+			let method: 'GET' | 'POST' = 'GET';
+			let path = '';
+			const qs: Record<string, string | number> = {};
+
+			if (resource === 'chat') {
+				const chatId =
+					operation !== 'list'
+						? (this.getNodeParameter('chatId', i) as string)
+						: '';
+				const routes: Record<string, string> = {
+					list: '/api/chats',
+					export: `/api/chats/${chatId}/export`,
+					getStats: `/api/chats/${chatId}/stats`,
+					getTopics: `/api/chats/${chatId}/topics`,
+				};
+				path = routes[operation];
+			} else if (resource === 'message') {
+				const chatId = this.getNodeParameter('chatId', i) as string;
+				if (operation === 'list') {
+					path = `/api/chats/${chatId}/messages`;
+					qs.limit = this.getNodeParameter('limit', i) as number;
+					qs.offset = this.getNodeParameter('offset', i) as number;
+					const search = this.getNodeParameter('search', i) as string;
+					if (search) qs.search = search;
+				} else if (operation === 'getByDate') {
+					path = `/api/chats/${chatId}/messages/by-date`;
+					qs.date = this.getNodeParameter('date', i) as string;
+				} else {
+					path = `/api/chats/${chatId}/pinned`;
+				}
+			} else if (resource === 'stats') {
+				path = operation === 'refresh' ? '/api/stats/refresh' : '/api/stats';
+				method = operation === 'refresh' ? 'POST' : 'GET';
+			} else if (resource === 'folder') {
+				path = '/api/folders';
+			} else {
+				path = '/api/archived/count';
+			}
+
+			const headers: Record<string, string> = { Accept: 'application/json' };
+			if (cookie) headers.Cookie = cookie;
+
+			const response = await this.helpers.httpRequest({
+				method,
+				url: `${baseUrl}${path}`,
+				qs,
+				headers,
+				json: true,
+			});
+
+			if (Array.isArray(response)) {
+				returnData.push(
+					...response.map((item) => ({ json: item as IDataObject })),
+				);
+			} else {
+				returnData.push({ json: response as IDataObject });
+			}
+		}
+
+		return [returnData];
+	}
 }

@@ -1,5 +1,4 @@
 import type {
-	IAuthenticateGeneric,
 	ICredentialTestRequest,
 	ICredentialType,
 	INodeProperties,
@@ -20,28 +19,28 @@ export class TelegramArchiveApi implements ICredentialType {
 			description: 'Base URL of the Telegram-Archive instance',
 		},
 		{
-			displayName: 'Auth Token',
-			name: 'authToken',
+			displayName: 'Username',
+			name: 'username',
+			type: 'string',
+			default: '',
+			description:
+				'Login username (leave empty if authentication is disabled on the instance)',
+		},
+		{
+			displayName: 'Password',
+			name: 'password',
 			type: 'string',
 			typeOptions: { password: true },
 			default: '',
-			description: 'Authentication token',
+			description:
+				'Login password (leave empty if authentication is disabled on the instance)',
 		},
 	];
-
-	authenticate: IAuthenticateGeneric = {
-		type: 'generic',
-		properties: {
-			headers: {
-				Authorization: '=Bearer {{$credentials.authToken}}',
-			},
-		},
-	};
 
 	test: ICredentialTestRequest = {
 		request: {
 			baseURL: '={{$credentials.url}}',
-			url: '/api/stats',
+			url: '/api/auth/check',
 			method: 'GET',
 		},
 	};

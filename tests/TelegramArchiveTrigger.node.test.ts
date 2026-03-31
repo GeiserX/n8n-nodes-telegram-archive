@@ -20,7 +20,8 @@ function createMockContext(
 		},
 		getCredentials: vi.fn().mockResolvedValue({
 			url: 'http://localhost:8000',
-			authToken: 'test-token',
+			username: '',
+			password: '',
 		}),
 	};
 }
@@ -36,22 +37,6 @@ describe('TelegramArchiveTrigger Node', () => {
 		expect(trigger.description.polling).toBe(true);
 	});
 
-	it('uses correct field name "messages" (not "totalMessages") from stats', async () => {
-		const staticData: Record<string, any> = { lastMessageCount: 10 };
-		const ctx = createMockContext(
-			{ chatId: '' },
-			staticData,
-			[{ messages: 15, chats: 3 }],
-		);
-
-		const result = await trigger.poll.call(ctx as any);
-
-		// It should detect 5 new messages via the "messages" field
-		expect(result).not.toBeNull();
-		expect(result![0][0].json.newMessages).toBe(5);
-		expect(staticData.lastMessageCount).toBe(15);
-	});
-
 	it('first poll (global) seeds state and returns null', async () => {
 		const staticData: Record<string, any> = {};
 		const ctx = createMockContext(
@@ -62,10 +47,23 @@ describe('TelegramArchiveTrigger Node', () => {
 
 		const result = await trigger.poll.call(ctx as any);
 
-		// First poll: previousCount is 0, currentCount is 100
-		// The node emits because currentCount > previousCount
-		// but it seeds lastMessageCount
+		expect(result).toBeNull();
 		expect(staticData.lastMessageCount).toBe(100);
+	});
+
+	it('detects new messages after seeding (global)', async () => {
+		const staticData: Record<string, any> = { lastMessageCount: 10 };
+		const ctx = createMockContext(
+			{ chatId: '' },
+			staticData,
+			[{ messages: 15, chats: 3 }],
+		);
+
+		const result = await trigger.poll.call(ctx as any);
+
+		expect(result).not.toBeNull();
+		expect(result![0][0].json.newMessages).toBe(5);
+		expect(staticData.lastMessageCount).toBe(15);
 	});
 
 	it('returns null when no new messages (global)', async () => {
@@ -81,7 +79,26 @@ describe('TelegramArchiveTrigger Node', () => {
 		expect(result).toBeNull();
 	});
 
-	it('when chatId set: tracks per-chat count', async () => {
+	it('first poll with chatId seeds state and returns null', async () => {
+		const staticData: Record<string, any> = {};
+		const ctx = createMockContext(
+			{ chatId: '456' },
+			staticData,
+			[
+				{
+					messages: 200,
+					per_chat_message_counts: { '456': 30 },
+				},
+			],
+		);
+
+		const result = await trigger.poll.call(ctx as any);
+
+		expect(result).toBeNull();
+		expect(staticData['chatCount_456']).toBe(30);
+	});
+
+	it('when chatId set: detects new per-chat messages', async () => {
 		const staticData: Record<string, any> = { 'chatCount_123': 50 };
 		const ctx = createMockContext(
 			{ chatId: '123' },
@@ -91,7 +108,6 @@ describe('TelegramArchiveTrigger Node', () => {
 					messages: 200,
 					per_chat_message_counts: { '123': 55 },
 				},
-				// Messages response for fetching new messages
 				[
 					{ id: 1, text: 'hello' },
 					{ id: 2, text: 'world' },
@@ -106,29 +122,6 @@ describe('TelegramArchiveTrigger Node', () => {
 
 		expect(result).not.toBeNull();
 		expect(staticData['chatCount_123']).toBe(55);
-	});
-
-	it('first poll with chatId seeds state and fetches messages', async () => {
-		const staticData: Record<string, any> = {};
-		const ctx = createMockContext(
-			{ chatId: '456' },
-			staticData,
-			[
-				{
-					messages: 200,
-					per_chat_message_counts: { '456': 30 },
-				},
-				// Messages response for the second HTTP call
-				[{ id: 1, text: 'first message' }],
-			],
-		);
-
-		const result = await trigger.poll.call(ctx as any);
-
-		// First poll for chatId: previousChatCount defaults to 0, currentChatCount is 30
-		// Since 30 > 0, it fetches messages and emits them
-		expect(staticData['chatCount_456']).toBe(30);
-		expect(result).not.toBeNull();
 	});
 
 	it('returns null when per-chat count unchanged', async () => {

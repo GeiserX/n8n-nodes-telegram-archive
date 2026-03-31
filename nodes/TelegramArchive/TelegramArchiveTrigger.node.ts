@@ -6,6 +6,29 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 
+async function getSessionCookie(
+	helpers: IPollFunctions['helpers'],
+	baseUrl: string,
+	username: string,
+	password: string,
+): Promise<string> {
+	if (!username || !password) return '';
+
+	const response = (await helpers.httpRequest({
+		method: 'POST',
+		url: `${baseUrl}/api/login`,
+		body: { username, password },
+		json: true,
+		returnFullResponse: true,
+	})) as { headers: Record<string, string | string[]> };
+
+	const setCookie = response.headers['set-cookie'];
+	const raw = Array.isArray(setCookie) ? setCookie.join('; ') : (setCookie ?? '');
+	const match = raw.match(/viewer_auth=([^;]+)/);
+	if (!match) throw new Error('Login failed — no session cookie received');
+	return `viewer_auth=${match[1]}`;
+}
+
 export class TelegramArchiveTrigger implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Telegram Archive Trigger',
@@ -44,30 +67,39 @@ export class TelegramArchiveTrigger implements INodeType {
 		const baseUrl = credentials.url as string;
 		const chatId = this.getNodeParameter('chatId', '') as string;
 
+		const cookie = await getSessionCookie(
+			this.helpers,
+			baseUrl,
+			credentials.username as string,
+			credentials.password as string,
+		);
+
 		const webhookData = this.getWorkflowStaticData('node');
 
-		// Fetch global stats — the API returns "messages" (not "totalMessages")
-		// and "per_chat_message_counts" with per-chat breakdowns
+		const headers: Record<string, string> = { Accept: 'application/json' };
+		if (cookie) headers.Cookie = cookie;
+
 		const statsResponse = await this.helpers.httpRequest({
 			method: 'GET',
 			url: `${baseUrl}/api/stats`,
-			headers: {
-				Authorization: `Bearer ${credentials.authToken}`,
-				Accept: 'application/json',
-			},
+			headers,
 			json: true,
 		});
 
 		const stats = statsResponse as IDataObject;
 
 		if (chatId) {
-			// Per-chat mode: track this specific chat's message count independently
 			const stateKey = `chatCount_${chatId}`;
-			const previousChatCount = (webhookData[stateKey] as number) ?? 0;
-
-			// Extract per-chat count from the stats response
 			const perChat = (stats.per_chat_message_counts as IDataObject) ?? {};
 			const currentChatCount = (perChat[chatId] as number) ?? 0;
+
+			// First poll: seed state without emitting
+			if (webhookData[stateKey] === undefined) {
+				webhookData[stateKey] = currentChatCount;
+				return null;
+			}
+
+			const previousChatCount = webhookData[stateKey] as number;
 
 			if (currentChatCount <= previousChatCount) {
 				webhookData[stateKey] = currentChatCount;
@@ -77,18 +109,11 @@ export class TelegramArchiveTrigger implements INodeType {
 			const newCount = currentChatCount - previousChatCount;
 			webhookData[stateKey] = currentChatCount;
 
-			// Fetch the latest messages from this specific chat
 			const messagesResponse = await this.helpers.httpRequest({
 				method: 'GET',
 				url: `${baseUrl}/api/chats/${chatId}/messages`,
-				qs: {
-					limit: newCount,
-					offset: 0,
-				},
-				headers: {
-					Authorization: `Bearer ${credentials.authToken}`,
-					Accept: 'application/json',
-				},
+				qs: { limit: newCount, offset: 0 },
+				headers,
 				json: true,
 			});
 
@@ -99,9 +124,16 @@ export class TelegramArchiveTrigger implements INodeType {
 			return [messages.map((msg) => ({ json: msg as IDataObject }))];
 		}
 
-		// Global mode: track total message count across all chats
-		const previousCount = (webhookData.lastMessageCount as number) ?? 0;
+		// Global mode
 		const currentCount = (stats.messages as number) ?? 0;
+
+		// First poll: seed state without emitting
+		if (webhookData.lastMessageCount === undefined) {
+			webhookData.lastMessageCount = currentCount;
+			return null;
+		}
+
+		const previousCount = webhookData.lastMessageCount as number;
 
 		if (currentCount <= previousCount) {
 			webhookData.lastMessageCount = currentCount;
