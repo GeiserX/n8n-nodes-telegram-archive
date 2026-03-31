@@ -22,6 +22,7 @@
 	"main": "dist/nodes/TelegramArchive/TelegramArchive.node.js",
 	"scripts": {
 		"build": "tsc && node build-icons.cjs",
+		"test": "vitest run",
 		"prepublishOnly": "npm run build"
 	},
 	"files": [
@@ -38,7 +39,8 @@
 		]
 	},
 	"devDependencies": {
-		"typescript": "~6.0.2"
+		"typescript": "~6.0.2",
+		"vitest": "^4.1.2"
 	},
 	"peerDependencies": {
 		"n8n-workflow": ">=1.0.0"
