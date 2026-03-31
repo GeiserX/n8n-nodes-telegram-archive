@@ -38,7 +38,7 @@
 		]
 	},
 	"devDependencies": {
-		"typescript": "~5.7.0"
+		"typescript": "~6.0.2"
 	},
 	"peerDependencies": {
 		"n8n-workflow": ">=1.0.0"
