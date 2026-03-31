@@ -1,0 +1,46 @@
+{
+	"name": "n8n-nodes-telegram-archive",
+	"version": "0.1.0",
+	"description": "n8n community node for Telegram-Archive — query archived Telegram chats, messages, and statistics",
+	"keywords": [
+		"n8n-community-node-package",
+		"telegram",
+		"archive",
+		"backup",
+		"messages",
+		"self-hosted",
+		"chat-history"
+	],
+	"license": "MIT",
+	"author": {
+		"name": "GeiserX"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/GeiserX/n8n-nodes-telegram-archive.git"
+	},
+	"main": "dist/nodes/TelegramArchive/TelegramArchive.node.js",
+	"scripts": {
+		"build": "tsc && node build-icons.cjs",
+		"prepublishOnly": "npm run build"
+	},
+	"files": [
+		"dist"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"credentials": [
+			"dist/credentials/TelegramArchiveApi.credentials.js"
+		],
+		"nodes": [
+			"dist/nodes/TelegramArchive/TelegramArchive.node.js",
+			"dist/nodes/TelegramArchive/TelegramArchiveTrigger.node.js"
+		]
+	},
+	"devDependencies": {
+		"typescript": "~5.7.0"
+	},
+	"peerDependencies": {
+		"n8n-workflow": ">=1.0.0"
+	}
+}
