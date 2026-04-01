@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-telegram-archive",
-	"version": "0.1.6",
+	"version": "0.1.7",
 	"description": "n8n community node for Telegram-Archive — query archived Telegram chats, messages, and statistics",
 	"keywords": [
 		"n8n-community-node-package",
@@ -39,6 +39,7 @@
 		]
 	},
 	"devDependencies": {
+		"@types/node": "^25.5.0",
 		"typescript": "~6.0.2",
 		"vitest": "^4.1.2"
 	},

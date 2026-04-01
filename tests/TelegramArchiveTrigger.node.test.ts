@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, it, expect, vi } from 'vitest';
 import { TelegramArchiveTrigger } from '../nodes/TelegramArchive/TelegramArchiveTrigger.node';
 
@@ -13,6 +14,10 @@ const LOGIN_RESPONSE_NEW = {
 		'set-cookie': ['viewer_auth=sess_newuser; Path=/; HttpOnly; SameSite=Lax'],
 	},
 };
+
+function fp(url: string, user: string, pass: string): string {
+	return createHash('sha256').update(`${url}|${user}|${pass}`).digest('hex');
+}
 
 function createMockContext(
 	params: Record<string, any>,
@@ -41,6 +46,8 @@ function createMockContext(
 		}),
 	};
 }
+
+const BASE = 'http://localhost:8000';
 
 describe('TelegramArchiveTrigger Node', () => {
 	const trigger = new TelegramArchiveTrigger();
@@ -165,26 +172,26 @@ describe('TelegramArchiveTrigger Node', () => {
 
 	// ── Auth-enabled: session caching ──
 
-	it('auth-enabled: logs in on first poll and caches cookie with key', async () => {
+	it('auth-enabled: logs in on first poll and caches hashed key', async () => {
 		const staticData: Record<string, any> = {};
 		const ctx = createMockContext(
 			{ chatId: '' },
 			staticData,
 			[
-				AUTH_ENABLED, // auth check
-				LOGIN_RESPONSE, // login
-				{ messages: 50, chats: 2 }, // stats
+				AUTH_ENABLED,
+				LOGIN_RESPONSE,
+				{ messages: 50, chats: 2 },
 			],
 			{ username: 'admin', password: 'secret' },
 		);
 
 		const result = await trigger.poll.call(ctx as any);
 
-		expect(result).toBeNull(); // first poll seeds
+		expect(result).toBeNull();
 		expect(staticData.lastMessageCount).toBe(50);
 		expect(staticData._authCookie).toBe('viewer_auth=sess_abc123');
 		expect(staticData._authCookieAt).toBeTypeOf('number');
-		expect(staticData._authKey).toBe('http://localhost:8000|admin|secret');
+		expect(staticData._authKey).toBe(fp(BASE, 'admin', 'secret'));
 	});
 
 	it('auth-enabled: reuses cached cookie without login', async () => {
@@ -192,7 +199,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=cached_token',
 			_authCookieAt: Date.now(),
-			_authKey: 'http://localhost:8000|admin|secret',
+			_authKey: fp(BASE, 'admin', 'secret'),
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
@@ -214,7 +221,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=old_expired',
 			_authCookieAt: Date.now() - 24 * 60 * 60 * 1000,
-			_authKey: 'http://localhost:8000|admin|secret',
+			_authKey: fp(BASE, 'admin', 'secret'),
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
@@ -239,25 +246,25 @@ describe('TelegramArchiveTrigger Node', () => {
 		const staticData: Record<string, any> = {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=old_user_session',
-			_authCookieAt: Date.now(), // fresh, but wrong user
-			_authKey: 'http://localhost:8000|admin|secret', // cached for "admin"
+			_authCookieAt: Date.now(),
+			_authKey: fp(BASE, 'admin', 'secret'),
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
 			staticData,
 			[
-				AUTH_ENABLED, // auth check (cache miss due to key mismatch)
-				LOGIN_RESPONSE_NEW, // login as new user
-				{ messages: 55, chats: 2 }, // stats
+				AUTH_ENABLED,
+				LOGIN_RESPONSE_NEW,
+				{ messages: 55, chats: 2 },
 			],
-			{ username: 'viewer2', password: 'pass2' }, // different user
+			{ username: 'viewer2', password: 'pass2' },
 		);
 
 		const result = await trigger.poll.call(ctx as any);
 
 		expect(result).not.toBeNull();
 		expect(staticData._authCookie).toBe('viewer_auth=sess_newuser');
-		expect(staticData._authKey).toBe('http://localhost:8000|viewer2|pass2');
+		expect(staticData._authKey).toBe(fp(BASE, 'viewer2', 'pass2'));
 	});
 
 	it('auth-enabled: invalidates cache when URL changes', async () => {
@@ -265,7 +272,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=old_instance_session',
 			_authCookieAt: Date.now(),
-			_authKey: 'http://localhost:8000|admin|secret', // cached for old URL
+			_authKey: fp(BASE, 'admin', 'secret'),
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
@@ -285,7 +292,9 @@ describe('TelegramArchiveTrigger Node', () => {
 		const result = await trigger.poll.call(ctx as any);
 
 		expect(result).not.toBeNull();
-		expect(staticData._authKey).toBe('http://new-server:8000|admin|secret');
+		expect(staticData._authKey).toBe(
+			fp('http://new-server:8000', 'admin', 'secret'),
+		);
 		expect(staticData._authCookie).toBe('viewer_auth=sess_abc123');
 	});
 
@@ -294,7 +303,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=old_password_session',
 			_authCookieAt: Date.now(),
-			_authKey: 'http://localhost:8000|admin|oldpass',
+			_authKey: fp(BASE, 'admin', 'oldpass'),
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
@@ -311,7 +320,22 @@ describe('TelegramArchiveTrigger Node', () => {
 
 		expect(result).not.toBeNull();
 		expect(staticData._authCookie).toBe('viewer_auth=sess_abc123');
-		expect(staticData._authKey).toBe('http://localhost:8000|admin|newpass');
+		expect(staticData._authKey).toBe(fp(BASE, 'admin', 'newpass'));
+	});
+
+	it('auth-enabled: stored key is a sha256 hash, not plaintext', async () => {
+		const staticData: Record<string, any> = {};
+		const ctx = createMockContext(
+			{ chatId: '' },
+			staticData,
+			[AUTH_ENABLED, LOGIN_RESPONSE, { messages: 10, chats: 1 }],
+			{ username: 'admin', password: 'secret' },
+		);
+
+		await trigger.poll.call(ctx as any);
+
+		expect(staticData._authKey).toMatch(/^[a-f0-9]{64}$/);
+		expect(staticData._authKey).not.toContain('secret');
 	});
 
 	// ── Auth-enabled: 401 retry ──
@@ -321,7 +345,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=revoked_session',
 			_authCookieAt: Date.now(),
-			_authKey: 'http://localhost:8000|admin|secret',
+			_authKey: fp(BASE, 'admin', 'secret'),
 		};
 
 		const err401 = Object.assign(new Error('Unauthorized'), {
@@ -332,10 +356,10 @@ describe('TelegramArchiveTrigger Node', () => {
 			{ chatId: '' },
 			staticData,
 			[
-				err401, // first stats attempt → 401
-				AUTH_ENABLED, // auth check for retry
-				LOGIN_RESPONSE, // fresh login
-				{ messages: 60, chats: 3 }, // retry stats succeeds
+				err401,
+				AUTH_ENABLED,
+				LOGIN_RESPONSE,
+				{ messages: 60, chats: 3 },
 			],
 			{ username: 'admin', password: 'secret' },
 		);
