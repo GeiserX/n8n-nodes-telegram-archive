@@ -6,12 +6,22 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 
-async function getSessionCookie(
+const SESSION_MAX_AGE_MS = 23 * 60 * 60 * 1000; // 23 h (server default: 30 days)
+
+async function getOrRefreshCookie(
 	helpers: IPollFunctions['helpers'],
+	staticData: IDataObject,
 	baseUrl: string,
 	username: string,
 	password: string,
 ): Promise<string> {
+	// Reuse cached cookie if still fresh
+	const cached = staticData._authCookie as string | undefined;
+	const cachedAt = staticData._authCookieAt as number | undefined;
+	if (cached && cachedAt && Date.now() - cachedAt < SESSION_MAX_AGE_MS) {
+		return cached;
+	}
+
 	// Check whether the instance actually requires authentication
 	const authCheck = (await helpers.httpRequest({
 		method: 'GET',
@@ -34,7 +44,11 @@ async function getSessionCookie(
 	const raw = Array.isArray(setCookie) ? setCookie.join('; ') : (setCookie ?? '');
 	const match = raw.match(/viewer_auth=([^;]+)/);
 	if (!match) throw new Error('Login failed — no session cookie received');
-	return `viewer_auth=${match[1]}`;
+
+	const newCookie = `viewer_auth=${match[1]}`;
+	staticData._authCookie = newCookie;
+	staticData._authCookieAt = Date.now();
+	return newCookie;
 }
 
 export class TelegramArchiveTrigger implements INodeType {
@@ -74,27 +88,58 @@ export class TelegramArchiveTrigger implements INodeType {
 		const credentials = await this.getCredentials('telegramArchiveApi');
 		const baseUrl = credentials.url as string;
 		const chatId = this.getNodeParameter('chatId', '') as string;
-
-		const cookie = await getSessionCookie(
-			this.helpers,
-			baseUrl,
-			credentials.username as string,
-			credentials.password as string,
-		);
+		const username = credentials.username as string;
+		const password = credentials.password as string;
 
 		const webhookData = this.getWorkflowStaticData('node');
 
+		// Authenticate once per poll cycle (cached between polls)
+		const cookie = await getOrRefreshCookie(
+			this.helpers,
+			webhookData,
+			baseUrl,
+			username,
+			password,
+		);
 		const headers: Record<string, string> = { Accept: 'application/json' };
 		if (cookie) headers.Cookie = cookie;
 
-		const statsResponse = await this.helpers.httpRequest({
-			method: 'GET',
-			url: `${baseUrl}/api/stats`,
-			headers,
-			json: true,
-		});
-
-		const stats = statsResponse as IDataObject;
+		// Fetch global stats with 401 retry
+		let stats: IDataObject;
+		try {
+			stats = (await this.helpers.httpRequest({
+				method: 'GET',
+				url: `${baseUrl}/api/stats`,
+				headers,
+				json: true,
+			})) as IDataObject;
+		} catch (error: unknown) {
+			const httpCode =
+				(error as { httpCode?: number }).httpCode ??
+				(error as { statusCode?: number }).statusCode;
+			if (httpCode === 401 && cookie) {
+				// Session revoked or expired — clear cache, re-login, retry once
+				delete webhookData._authCookie;
+				delete webhookData._authCookieAt;
+				const freshCookie = await getOrRefreshCookie(
+					this.helpers,
+					webhookData,
+					baseUrl,
+					username,
+					password,
+				);
+				if (freshCookie) headers.Cookie = freshCookie;
+				else delete headers.Cookie;
+				stats = (await this.helpers.httpRequest({
+					method: 'GET',
+					url: `${baseUrl}/api/stats`,
+					headers,
+					json: true,
+				})) as IDataObject;
+			} else {
+				throw error;
+			}
+		}
 
 		if (chatId) {
 			const stateKey = `chatCount_${chatId}`;
