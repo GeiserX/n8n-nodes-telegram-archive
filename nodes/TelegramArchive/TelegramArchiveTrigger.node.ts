@@ -8,6 +8,10 @@ import type {
 
 const SESSION_MAX_AGE_MS = 23 * 60 * 60 * 1000; // 23 h (server default: 30 days)
 
+function credentialKey(baseUrl: string, username: string): string {
+	return `${baseUrl}|${username}`;
+}
+
 async function getOrRefreshCookie(
 	helpers: IPollFunctions['helpers'],
 	staticData: IDataObject,
@@ -15,10 +19,18 @@ async function getOrRefreshCookie(
 	username: string,
 	password: string,
 ): Promise<string> {
-	// Reuse cached cookie if still fresh
+	const key = credentialKey(baseUrl, username);
+
+	// Reuse cached cookie if still fresh and credentials haven't changed
 	const cached = staticData._authCookie as string | undefined;
 	const cachedAt = staticData._authCookieAt as number | undefined;
-	if (cached && cachedAt && Date.now() - cachedAt < SESSION_MAX_AGE_MS) {
+	const cachedKey = staticData._authKey as string | undefined;
+	if (
+		cached &&
+		cachedAt &&
+		cachedKey === key &&
+		Date.now() - cachedAt < SESSION_MAX_AGE_MS
+	) {
 		return cached;
 	}
 
@@ -48,7 +60,50 @@ async function getOrRefreshCookie(
 	const newCookie = `viewer_auth=${match[1]}`;
 	staticData._authCookie = newCookie;
 	staticData._authCookieAt = Date.now();
+	staticData._authKey = key;
 	return newCookie;
+}
+
+function clearCookieCache(staticData: IDataObject): void {
+	delete staticData._authCookie;
+	delete staticData._authCookieAt;
+	delete staticData._authKey;
+}
+
+async function requestWithRetry(
+	helpers: IPollFunctions['helpers'],
+	staticData: IDataObject,
+	headers: Record<string, string>,
+	baseUrl: string,
+	username: string,
+	password: string,
+	options: {
+		method: 'GET' | 'POST';
+		url: string;
+		qs?: Record<string, string | number>;
+	},
+): Promise<unknown> {
+	try {
+		return await helpers.httpRequest({ ...options, headers, json: true });
+	} catch (error: unknown) {
+		const httpCode =
+			(error as { httpCode?: number }).httpCode ??
+			(error as { statusCode?: number }).statusCode;
+		if (httpCode === 401 && headers.Cookie) {
+			clearCookieCache(staticData);
+			const freshCookie = await getOrRefreshCookie(
+				helpers,
+				staticData,
+				baseUrl,
+				username,
+				password,
+			);
+			if (freshCookie) headers.Cookie = freshCookie;
+			else delete headers.Cookie;
+			return await helpers.httpRequest({ ...options, headers, json: true });
+		}
+		throw error;
+	}
 }
 
 export class TelegramArchiveTrigger implements INodeType {
@@ -93,7 +148,7 @@ export class TelegramArchiveTrigger implements INodeType {
 
 		const webhookData = this.getWorkflowStaticData('node');
 
-		// Authenticate once per poll cycle (cached between polls)
+		// Authenticate once per poll cycle (cached between polls, keyed by url+username)
 		const cookie = await getOrRefreshCookie(
 			this.helpers,
 			webhookData,
@@ -104,42 +159,15 @@ export class TelegramArchiveTrigger implements INodeType {
 		const headers: Record<string, string> = { Accept: 'application/json' };
 		if (cookie) headers.Cookie = cookie;
 
-		// Fetch global stats with 401 retry
-		let stats: IDataObject;
-		try {
-			stats = (await this.helpers.httpRequest({
-				method: 'GET',
-				url: `${baseUrl}/api/stats`,
-				headers,
-				json: true,
-			})) as IDataObject;
-		} catch (error: unknown) {
-			const httpCode =
-				(error as { httpCode?: number }).httpCode ??
-				(error as { statusCode?: number }).statusCode;
-			if (httpCode === 401 && cookie) {
-				// Session revoked or expired — clear cache, re-login, retry once
-				delete webhookData._authCookie;
-				delete webhookData._authCookieAt;
-				const freshCookie = await getOrRefreshCookie(
-					this.helpers,
-					webhookData,
-					baseUrl,
-					username,
-					password,
-				);
-				if (freshCookie) headers.Cookie = freshCookie;
-				else delete headers.Cookie;
-				stats = (await this.helpers.httpRequest({
-					method: 'GET',
-					url: `${baseUrl}/api/stats`,
-					headers,
-					json: true,
-				})) as IDataObject;
-			} else {
-				throw error;
-			}
-		}
+		const stats = (await requestWithRetry(
+			this.helpers,
+			webhookData,
+			headers,
+			baseUrl,
+			username,
+			password,
+			{ method: 'GET', url: `${baseUrl}/api/stats` },
+		)) as IDataObject;
 
 		if (chatId) {
 			const stateKey = `chatCount_${chatId}`;
@@ -162,13 +190,19 @@ export class TelegramArchiveTrigger implements INodeType {
 			const newCount = currentChatCount - previousChatCount;
 			webhookData[stateKey] = currentChatCount;
 
-			const messagesResponse = await this.helpers.httpRequest({
-				method: 'GET',
-				url: `${baseUrl}/api/chats/${chatId}/messages`,
-				qs: { limit: newCount, offset: 0 },
+			const messagesResponse = await requestWithRetry(
+				this.helpers,
+				webhookData,
 				headers,
-				json: true,
-			});
+				baseUrl,
+				username,
+				password,
+				{
+					method: 'GET',
+					url: `${baseUrl}/api/chats/${chatId}/messages`,
+					qs: { limit: newCount, offset: 0 },
+				},
+			);
 
 			const messages = Array.isArray(messagesResponse)
 				? messagesResponse
