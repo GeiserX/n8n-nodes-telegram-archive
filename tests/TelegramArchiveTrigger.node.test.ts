@@ -184,7 +184,7 @@ describe('TelegramArchiveTrigger Node', () => {
 		expect(staticData.lastMessageCount).toBe(50);
 		expect(staticData._authCookie).toBe('viewer_auth=sess_abc123');
 		expect(staticData._authCookieAt).toBeTypeOf('number');
-		expect(staticData._authKey).toBe('http://localhost:8000|admin');
+		expect(staticData._authKey).toBe('http://localhost:8000|admin|secret');
 	});
 
 	it('auth-enabled: reuses cached cookie without login', async () => {
@@ -192,7 +192,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=cached_token',
 			_authCookieAt: Date.now(),
-			_authKey: 'http://localhost:8000|admin',
+			_authKey: 'http://localhost:8000|admin|secret',
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
@@ -214,7 +214,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=old_expired',
 			_authCookieAt: Date.now() - 24 * 60 * 60 * 1000,
-			_authKey: 'http://localhost:8000|admin',
+			_authKey: 'http://localhost:8000|admin|secret',
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
@@ -240,7 +240,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=old_user_session',
 			_authCookieAt: Date.now(), // fresh, but wrong user
-			_authKey: 'http://localhost:8000|admin', // cached for "admin"
+			_authKey: 'http://localhost:8000|admin|secret', // cached for "admin"
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
@@ -257,7 +257,7 @@ describe('TelegramArchiveTrigger Node', () => {
 
 		expect(result).not.toBeNull();
 		expect(staticData._authCookie).toBe('viewer_auth=sess_newuser');
-		expect(staticData._authKey).toBe('http://localhost:8000|viewer2');
+		expect(staticData._authKey).toBe('http://localhost:8000|viewer2|pass2');
 	});
 
 	it('auth-enabled: invalidates cache when URL changes', async () => {
@@ -265,7 +265,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=old_instance_session',
 			_authCookieAt: Date.now(),
-			_authKey: 'http://localhost:8000|admin', // cached for old URL
+			_authKey: 'http://localhost:8000|admin|secret', // cached for old URL
 		};
 		const ctx = createMockContext(
 			{ chatId: '' },
@@ -285,8 +285,33 @@ describe('TelegramArchiveTrigger Node', () => {
 		const result = await trigger.poll.call(ctx as any);
 
 		expect(result).not.toBeNull();
-		expect(staticData._authKey).toBe('http://new-server:8000|admin');
+		expect(staticData._authKey).toBe('http://new-server:8000|admin|secret');
 		expect(staticData._authCookie).toBe('viewer_auth=sess_abc123');
+	});
+
+	it('auth-enabled: invalidates cache when password changes', async () => {
+		const staticData: Record<string, any> = {
+			lastMessageCount: 50,
+			_authCookie: 'viewer_auth=old_password_session',
+			_authCookieAt: Date.now(),
+			_authKey: 'http://localhost:8000|admin|oldpass',
+		};
+		const ctx = createMockContext(
+			{ chatId: '' },
+			staticData,
+			[
+				AUTH_ENABLED,
+				LOGIN_RESPONSE,
+				{ messages: 55, chats: 2 },
+			],
+			{ username: 'admin', password: 'newpass' },
+		);
+
+		const result = await trigger.poll.call(ctx as any);
+
+		expect(result).not.toBeNull();
+		expect(staticData._authCookie).toBe('viewer_auth=sess_abc123');
+		expect(staticData._authKey).toBe('http://localhost:8000|admin|newpass');
 	});
 
 	// ── Auth-enabled: 401 retry ──
@@ -296,7 +321,7 @@ describe('TelegramArchiveTrigger Node', () => {
 			lastMessageCount: 50,
 			_authCookie: 'viewer_auth=revoked_session',
 			_authCookieAt: Date.now(),
-			_authKey: 'http://localhost:8000|admin',
+			_authKey: 'http://localhost:8000|admin|secret',
 		};
 
 		const err401 = Object.assign(new Error('Unauthorized'), {

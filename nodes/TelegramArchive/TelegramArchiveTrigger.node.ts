@@ -8,8 +8,8 @@ import type {
 
 const SESSION_MAX_AGE_MS = 23 * 60 * 60 * 1000; // 23 h (server default: 30 days)
 
-function credentialKey(baseUrl: string, username: string): string {
-	return `${baseUrl}|${username}`;
+function credentialKey(baseUrl: string, username: string, password: string): string {
+	return `${baseUrl}|${username}|${password}`;
 }
 
 async function getOrRefreshCookie(
@@ -19,7 +19,7 @@ async function getOrRefreshCookie(
 	username: string,
 	password: string,
 ): Promise<string> {
-	const key = credentialKey(baseUrl, username);
+	const key = credentialKey(baseUrl, username, password);
 
 	// Reuse cached cookie if still fresh and credentials haven't changed
 	const cached = staticData._authCookie as string | undefined;
