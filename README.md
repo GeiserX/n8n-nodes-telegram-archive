@@ -42,6 +42,14 @@ Regular node with the following resources and operations:
 
 Polling trigger that detects new messages by comparing total message counts via the stats endpoint. Optionally filter to a specific chat.
 
+## Other n8n Community Nodes by GeiserX
+
+- [n8n-nodes-cashpilot](https://github.com/GeiserX/n8n-nodes-cashpilot) — Passive income monitoring
+- [n8n-nodes-genieacs](https://github.com/GeiserX/n8n-nodes-genieacs) — TR-069 device management
+- [n8n-nodes-lynxprompt](https://github.com/GeiserX/n8n-nodes-lynxprompt) — AI configuration blueprints
+- [n8n-nodes-pumperly](https://github.com/GeiserX/n8n-nodes-pumperly) — Fuel and EV charging prices
+- [n8n-nodes-way-cms](https://github.com/GeiserX/n8n-nodes-way-cms) — Web archive content management
+
 ## License
 
 [MIT](LICENSE)
