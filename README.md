@@ -50,6 +50,17 @@ Polling trigger that detects new messages by comparing total message counts via 
 - [n8n-nodes-pumperly](https://github.com/GeiserX/n8n-nodes-pumperly) — Fuel and EV charging prices
 - [n8n-nodes-way-cms](https://github.com/GeiserX/n8n-nodes-way-cms) — Web archive content management
 
+
+## Related Projects
+
+| Project | Description |
+|---------|-------------|
+| [Telegram-Archive](https://github.com/GeiserX/Telegram-Archive) | Automated, incremental Telegram backups with a local web viewer |
+| [telegram-delay-channel-cloner](https://github.com/GeiserX/telegram-delay-channel-cloner) | Telegram bot that relays messages between channels with configurable delay |
+| [telegram-slskd-local-bot](https://github.com/GeiserX/telegram-slskd-local-bot) | Automated music discovery and download via Telegram bot with Soulseek |
+| [paperless-telegram-bot](https://github.com/GeiserX/paperless-telegram-bot) | Manage Paperless-NGX documents entirely through Telegram |
+| [telegram-archive-mcp](https://github.com/GeiserX/telegram-archive-mcp) | MCP Server for Telegram-Archive |
+
 ## License
 
 [MIT](LICENSE)
