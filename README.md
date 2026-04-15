@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/banner.svg" alt="n8n-nodes-telegram-archive banner" width="900"/>
+</p>
+
 # n8n-nodes-telegram-archive
 
 This is an n8n community node package for [Telegram-Archive](https://github.com/GeiserX/Telegram-Archive) — query archived Telegram chats, messages, and statistics from your self-hosted instance.
