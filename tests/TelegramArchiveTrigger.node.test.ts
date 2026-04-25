@@ -371,4 +371,88 @@ describe('TelegramArchiveTrigger Node', () => {
 		expect(staticData._authCookie).toBe('viewer_auth=sess_abc123');
 		expect(staticData.lastMessageCount).toBe(60);
 	});
+
+	it('auth-enabled: 401 retry with no fresh cookie deletes Cookie header', async () => {
+		const staticData: Record<string, any> = {
+			lastMessageCount: 50,
+			_authCookie: 'viewer_auth=revoked_session',
+			_authCookieAt: Date.now(),
+			_authKey: fp(BASE, 'admin', 'secret'),
+		};
+
+		const err401 = Object.assign(new Error('Unauthorized'), {
+			httpCode: 401,
+		});
+
+		// Auth check returns auth NOT required, so getOrRefreshCookie returns ''
+		const ctx = createMockContext(
+			{ chatId: '' },
+			staticData,
+			[
+				err401,
+				AUTH_DISABLED,
+				{ messages: 60, chats: 3 },
+			],
+			{ username: 'admin', password: 'secret' },
+		);
+
+		const result = await trigger.poll.call(ctx as any);
+
+		expect(result).not.toBeNull();
+		expect(result![0][0].json.newMessages).toBe(10);
+	});
+
+	it('auth-enabled: non-401 error is rethrown without retry', async () => {
+		const staticData: Record<string, any> = {
+			lastMessageCount: 50,
+			_authCookie: 'viewer_auth=valid_session',
+			_authCookieAt: Date.now(),
+			_authKey: fp(BASE, 'admin', 'secret'),
+		};
+
+		const err500 = Object.assign(new Error('Internal Server Error'), {
+			httpCode: 500,
+		});
+
+		const ctx = createMockContext(
+			{ chatId: '' },
+			staticData,
+			[err500],
+			{ username: 'admin', password: 'secret' },
+		);
+
+		await expect(trigger.poll.call(ctx as any)).rejects.toThrow(
+			'Internal Server Error',
+		);
+	});
+
+	it('handles 401 with statusCode property instead of httpCode', async () => {
+		const staticData: Record<string, any> = {
+			lastMessageCount: 50,
+			_authCookie: 'viewer_auth=revoked_session',
+			_authCookieAt: Date.now(),
+			_authKey: fp(BASE, 'admin', 'secret'),
+		};
+
+		const err401 = Object.assign(new Error('Unauthorized'), {
+			statusCode: 401,
+		});
+
+		const ctx = createMockContext(
+			{ chatId: '' },
+			staticData,
+			[
+				err401,
+				AUTH_ENABLED,
+				LOGIN_RESPONSE,
+				{ messages: 60, chats: 3 },
+			],
+			{ username: 'admin', password: 'secret' },
+		);
+
+		const result = await trigger.poll.call(ctx as any);
+
+		expect(result).not.toBeNull();
+		expect(result![0][0].json.newMessages).toBe(10);
+	});
 });
