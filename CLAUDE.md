@@ -1,4 +1,4 @@
-# AGENTS.md — n8n-nodes-telegram-archive
+# CLAUDE.md — n8n-nodes-telegram-archive
 
 ## Project Overview
 
